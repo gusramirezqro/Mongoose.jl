@@ -63,10 +63,13 @@ end
 end
 
 function execute_handler(router::Router, request::IdRequest)
-    if (matched = match_route(router, request.payload.method, request.payload.uri)) === nothing
+    # Convert string method to symbol for backward compatibility with existing Router
+    method_sym = Symbol(lowercase(request.payload.method))
+
+    if (matched = match_route(router, method_sym, request.payload.uri)) === nothing
         return IdResponse(request.id, Response(404, "Content-Type: text/plain\r\n", "404 Not Found"))
     end
-    if (handler = get(matched.handler, request.payload.method, nothing)) === nothing
+    if (handler = get(matched.handler, method_sym, nothing)) === nothing
         return IdResponse(request.id, Response(405, "Content-Type: text/plain\r\n", "405 Method Not Allowed"))
     end
     try

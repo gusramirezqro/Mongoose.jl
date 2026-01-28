@@ -125,4 +125,36 @@ using Test
             shutdown!(server2)
         end
     end
+
+    # --- Test 5: Oxygen-like API ---
+    @testset "Oxygen API" begin
+        # Register routes using macros
+        @get "/api/oxygen" (req) -> "Oxygen works!"
+        @post "/api/data" (req) -> begin
+            "Received: " * req.body
+        end
+
+        # Start async server
+        # Note: This starts a background thread with an infinite loop.
+        # There is currently no easy way to stop it cleanly in this simple implementation.
+        t = start_async(port="8096")
+        sleep(1) # Give it time to start
+
+        try
+            # Test GET
+            r = HTTP.get("http://localhost:8096/api/oxygen")
+            @test r.status == 200
+            @test String(r.body) == "Oxygen works!"
+
+            # Test POST
+            r_post = HTTP.post("http://localhost:8096/api/data", [], "Some Data")
+            @test r_post.status == 200
+            @test String(r_post.body) == "Received: Some Data"
+
+        finally
+            # We can't stop the global manager loop easily without exposing cleanup.
+            # But the process will exit after tests.
+        end
+    end
+
 end

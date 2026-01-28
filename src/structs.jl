@@ -1,12 +1,27 @@
 struct Request
-    method::Symbol
+    method::String
     uri::String
-    query::String
-    headers::Dict{String,String}
     body::String
+    _raw_msg::Ptr{MgHttpMessage}
+end
 
-    function Request(message::MgHttpMessage)
-        return new(_method(message), _uri(message), _query(message), _headers(message), _body(message))
+function build_request(msg_ptr::Ptr{MgHttpMessage})
+    msg = unsafe_load(msg_ptr)
+    return Request(
+        to_string(msg.method),
+        to_string(msg.uri),
+        to_string(msg.body),
+        msg_ptr
+    )
+end
+
+function Base.getproperty(req::Request, sym::Symbol)
+    if sym === :headers
+        return _headers(unsafe_load(getfield(req, :_raw_msg)))
+    elseif sym === :query
+        return to_string(unsafe_load(getfield(req, :_raw_msg)).query)
+    else
+        return getfield(req, sym)
     end
 end
 
@@ -73,9 +88,11 @@ end
 
 function _headers(message::MgHttpMessage)
     headers = Dict{String,String}()
-    sizehint!(headers, length(message.headers))
+    # sizehint!(headers, length(message.headers)) # NTuple length is fixed at 30, but not all are used.
+    # message.headers is NTuple. Iterating it is fine.
     for header in message.headers
-        if header.name.ptr != C_NULL && header.name.len > 0 && header.val.ptr != C_NULL && header.val.len > 0
+        if header.name.ptr != C_NULL && header.name.len > 0
+             # && header.val.ptr != C_NULL # Value can be empty string
             name = to_string(header.name)
             value = to_string(header.val)
             headers[name] = value

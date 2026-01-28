@@ -1,8 +1,10 @@
 module Mongoose
 
 using Mongoose_jll
+using Libc
 
 export AsyncServer, SyncServer, Request, Response, start!, shutdown!, route!, deserialize, serialize
+export @get, @post, serve, start_async
 
 include("wrappers.jl")
 include("structs.jl")
@@ -114,6 +116,58 @@ function shutdown!(server::Server)
     unregister!(server)
     @info "Server stopped successfully."
     return
+end
+
+# --- New Architecture (Oxygen-like) ---
+
+const GLOBAL_MANAGER_REF = Ref{Ptr{Cvoid}}(C_NULL)
+
+function get_global_manager()
+    if GLOBAL_MANAGER_REF[] == C_NULL
+        ptr = Libc.malloc(Csize_t(128))
+        ptr == C_NULL && error("Failed to allocate manager memory")
+        mg_mgr_init!(ptr)
+        GLOBAL_MANAGER_REF[] = ptr
+    end
+    return GLOBAL_MANAGER_REF[]
+end
+
+macro get(path, func)
+    return quote
+        key = "GET " * $path
+        Mongoose.ROUTER[key] = $func
+    end
+end
+
+macro post(path, func)
+    return quote
+        key = "POST " * $path
+        Mongoose.ROUTER[key] = $func
+    end
+end
+
+function serve(; port="8000")
+    mgr = get_global_manager()
+    # Internal handler is defined in events.jl
+    handler_c = @cfunction(internal_event_handler, Cvoid, (Ptr{Cvoid}, Cint, Ptr{Cvoid}))
+    mg_http_listen(mgr, "http://0.0.0.0:"*port, handler_c, C_NULL)
+
+    # Infinite Loop (Blocking)
+    while true
+        mg_mgr_poll(mgr, 1000)
+    end
+end
+
+function start_async(; port="8000")
+    # Run the C-Loop on a background thread so the REPL remains active
+    errormonitor(Threads.@spawn begin
+        mgr = get_global_manager()
+        handler_c = @cfunction(internal_event_handler, Cvoid, (Ptr{Cvoid}, Cint, Ptr{Cvoid}))
+        mg_http_listen(mgr, "http://0.0.0.0:"*port, handler_c, C_NULL)
+        while true
+            mg_mgr_poll(mgr, 1000)
+        end
+    end)
 end
 
 end

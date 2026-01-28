@@ -1,5 +1,8 @@
 const REGISTRY = Dict{UInt,Server}()
 
+# Global Router for the new architecture
+const ROUTER = Dict{String, Function}()
+
 function register!(server::Server)
     get!(REGISTRY, objectid(server), server)
     return
